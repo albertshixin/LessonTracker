@@ -1,0 +1,22 @@
+﻿# Flutter/Dart
+.dart_tool/
+.packages
+.pub/
+build/
+coverage/
+*.iml
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Platform build artifacts
+android/.gradle/
+android/app/build/
+ios/Pods/
+
+# Misc
+.DS_Store
+Thumbs.db
