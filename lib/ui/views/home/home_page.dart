@@ -35,7 +35,16 @@ class HomePage extends StatelessWidget {
             return AnimatedBuilder(
               animation: store,
               builder: (context, _) {
-                final courses = store.courses;
+                final now = DateTime.now();
+                final courses = [...store.courses]
+                  ..sort((a, b) {
+                    final an = a.schedule.nextSession(now);
+                    final bn = b.schedule.nextSession(now);
+                    if (an == null && bn == null) return 0;
+                    if (an == null) return 1;
+                    if (bn == null) return -1;
+                    return an.compareTo(bn);
+                  });
 
                 return ListView.separated(
                   padding: EdgeInsets.fromLTRB(horizontal, 12, horizontal, 88),
@@ -49,6 +58,7 @@ class HomePage extends StatelessWidget {
                     final course = courses[index - 1];
                     final now = DateTime.now();
                     final canCheckIn = _canCheckIn(course, now);
+                    final hasAttendedToday = _hasAttendedToday(course, now);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -62,17 +72,25 @@ class HomePage extends StatelessWidget {
                             Expanded(
                               child: FilledButton(
                                 onPressed: canCheckIn
-                                    ? () => _checkIn(context, course)
+                                    ? () => _checkIn(context, course, hasAttendedToday)
                                     : null,
-                                child: const Text('打卡'),
+                                child: Text(hasAttendedToday ? '已打卡' : '打卡'),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () =>
-                                    _openAttendance(context, course, true),
-                                child: const Text('打卡记录'),
+                                    _openAttendance(context, course, makeUpMode: false, leaveMode: true),
+                                child: const Text('请假'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () =>
+                                    _openAttendance(context, course, makeUpMode: true, leaveMode: false),
+                                child: const Text('补卡'),
                               ),
                             ),
                           ],
@@ -126,6 +144,15 @@ class HomePage extends StatelessWidget {
     return '${dt.month}月${dt.day}日 $h:$m';
   }
 
+  bool _hasAttendedToday(Course course, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    return course.attendanceRecords.any((r) =>
+        r.status == AttendanceStatus.attended &&
+        r.sessionStart.year == today.year &&
+        r.sessionStart.month == today.month &&
+        r.sessionStart.day == today.day);
+  }
+
   bool _canCheckIn(Course course, DateTime now) {
     final sessions = course.schedule.sessionsOnDay(now);
     if (sessions.isEmpty) return false;
@@ -138,8 +165,14 @@ class HomePage extends StatelessWidget {
     return false;
   }
 
-  void _checkIn(BuildContext context, Course course) {
+  void _checkIn(BuildContext context, Course course, bool hasAttendedToday) {
     final store = AppScope.of(context);
+    if (hasAttendedToday) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('今天上课已经打过卡，不需要重复打卡')),
+      );
+      return;
+    }
     final now = DateTime.now();
     final sessions = course.schedule.sessionsOnDay(now);
     if (sessions.isEmpty) return;
@@ -151,12 +184,17 @@ class HomePage extends StatelessWidget {
 
   void _openAttendance(
     BuildContext context,
-    Course course,
-    bool makeUpMode,
-  ) {
+    Course course, {
+    required bool makeUpMode,
+    required bool leaveMode,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CourseAttendancePage(course: course, makeUp: makeUpMode),
+        builder: (_) => CourseAttendancePage(
+          course: course,
+          makeUp: makeUpMode,
+          leaveMode: leaveMode,
+        ),
       ),
     );
   }

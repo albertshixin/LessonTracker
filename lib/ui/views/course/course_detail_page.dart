@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../core/app_scope.dart';
 import '../../../data/models/course.dart';
@@ -42,7 +42,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         TextEditingController(text: c.lessonDurationMinutes.toString());
 
     _category = c.category;
-    _initialSession = c.schedule.initialSession;
+    _initialSession = c.startDate ?? c.schedule.initialSession;
     _repeatPattern = c.schedule.repeatPattern;
     _makeUpMethod = c.schedule.makeUpMethod;
     _weeklySlots = List<WeeklyCourseTime>.from(c.schedule.weeklySlots);
@@ -96,11 +96,12 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                     key: ValueKey('category-$_category-$_editing'),
                     initialValue: _category,
                     items: const [
-                      DropdownMenuItem(value: '音乐', child: Text('音乐')),
-                      DropdownMenuItem(value: '学科', child: Text('学科')),
-                      DropdownMenuItem(value: '运动', child: Text('运动')),
-                      DropdownMenuItem(value: '艺术', child: Text('艺术')),
-                      DropdownMenuItem(value: '其他', child: Text('其他')),
+                      DropdownMenuItem(value: '学科辅导', child: Text('学科辅导')),
+                      DropdownMenuItem(value: '艺术素养', child: Text('艺术素养')),
+                      DropdownMenuItem(value: '体育训练', child: Text('体育训练')),
+                      DropdownMenuItem(value: '科技编程', child: Text('科技编程')),
+                      DropdownMenuItem(value: '综合素养', child: Text('综合素养')),
+                      DropdownMenuItem(value: '语言文化', child: Text('语言文化')),
                     ],
                     onChanged: _editing
                         ? (v) {
@@ -238,6 +239,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                             setState(() => _makeUpMethod = v);
                           }
                         : null,
+                    validator: (v) => v == null ? '请选择补课方式' : null,
                     decoration: const InputDecoration(
                       labelText: '补课方式',
                       border: OutlineInputBorder(),
@@ -558,13 +560,38 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   Future<void> _pickInitialSession() async {
     final now = DateTime.now();
     final initialDate = _initialSession ?? now;
+    final firstDate = DateTime(2000, 1, 1);
+    final lastDate = DateTime(2100, 12, 31);
+    final safeInitial = initialDate.isBefore(firstDate)
+        ? firstDate
+        : initialDate.isAfter(lastDate)
+            ? lastDate
+            : initialDate;
 
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime(initialDate.year, initialDate.month, initialDate.day),
-      firstDate: DateTime(now.year - 1, 1, 1),
-      lastDate: DateTime(now.year + 5, 12, 31),
+      initialDate: DateTime(safeInitial.year, safeInitial.month, safeInitial.day),
+      firstDate: firstDate,
+      lastDate: lastDate,
       helpText: '选择开始上课日期',
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return Stack(
+          children: [
+            child,
+            Positioned(
+              right: 8,
+              top: 8,
+              child: TextButton.icon(
+                onPressed: () => Navigator.of(context).pop(DateTime.now()),
+                icon: const Icon(Icons.today),
+                label: const Text('回到今天'),
+              ),
+            ),
+          ],
+        );
+      },
     );
     if (date == null || !mounted) return;
 
@@ -651,53 +678,62 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
       makeUpMethod: _makeUpMethod,
     );
 
+    final endDate = _computeEndDate();
+
     final updated = widget.course.copyWith(
       title: _titleController.text.trim(),
       category: _category,
       totalLessons: total,
       consumedLessons: consumed,
       lessonDurationMinutes: duration,
+      startDate: _initialSession,
+      endDate: endDate,
       schedule: schedule,
     );
 
     store.update(updated);
     setState(() => _editing = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('保存成功')),
-    );
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
+
 
   bool _validateSchedule() {
     String? error;
 
-    if (_repeatPattern == CourseRepeatPattern.none) {
-      if (_initialSession == null) {
-        error = '请设置开始上课日期，或改为按周/按月重复并添加时间';
-      }
+    if (_initialSession == null) {
+      error = '请设置开始上课日期';
     } else if (_repeatPattern == CourseRepeatPattern.weekly) {
       if (_weeklySlots.isEmpty) {
-        error = '请选择按周的上课时间（可多个，例如：周一 14:00 / 周五 10:00）';
+        error =
+            '请选择按周的上课时间（可多个，例如：周一 14:00 / 周五 10:00）';
       }
     } else if (_repeatPattern == CourseRepeatPattern.monthly) {
       if (_monthlySlots.isEmpty) {
-        error = '请选择按月的上课时间（可多个，例如：10号 18:00 / 16号 16:00）';
+        error =
+            '请选择按月的上课时间（可多个，例如：10号 18:00 / 16号 16:00）';
       }
     }
 
     setState(() => _scheduleError = error);
     return error == null;
   }
-
   String _formatDate(DateTime dt) {
-    return '${dt.month}月${dt.day}日';
+    return '${dt.month}\u6708${dt.day}\u65e5';
   }
 
   String? _computeEndDateLabel() {
+    final date = _computeEndDate();
+    if (date == null) return null;
+    return '${date.year}\u5e74${date.month}\u6708${date.day}\u65e5';
+  }
+  DateTime? _computeEndDate() {
     final total = double.tryParse(_totalController.text.trim());
     final consumed = double.tryParse(_consumedController.text.trim());
     if (total == null || consumed == null) return null;
     final remaining = (total - consumed).ceil();
-    if (remaining <= 0) return '已上完';
+    if (remaining <= 0) return DateTime.now();
 
     final schedule = CourseSchedule(
       initialSession: _initialSession,
@@ -716,7 +752,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
       if (next == null) break;
       last = next;
     }
-    return '${last.year}年${last.month}月${last.day}日';
+    return last;
   }
 }
 
@@ -742,3 +778,5 @@ class _SectionTitle extends StatelessWidget {
     );
   }
 }
+
+
