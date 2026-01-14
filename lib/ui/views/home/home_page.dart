@@ -3,12 +3,32 @@
 import '../../../core/app_scope.dart';
 import '../../../data/models/course.dart';
 import '../../widgets/course_card.dart';
+import '../attendance/course_attendance_page.dart';
 import '../course/course_create_page.dart';
 import '../course/course_detail_page.dart';
-import '../attendance/course_attendance_page.dart';
 
-class HomePage extends StatelessWidget {
+enum _CourseFilter { all, expiringSoon, thisWeek }
+
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  _CourseFilter _filter = _CourseFilter.all;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  bool _searchMode = false;
+  String _keyword = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,14 +38,45 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
-        title: const _AppBrandTitle(),
+        title: _searchMode
+            ? SizedBox(
+                height: 40,
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: (value) => setState(() => _keyword = value.trim()),
+                  decoration: const InputDecoration(
+                    hintText: '输入课程关键字',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+              )
+            : const _AppBrandTitle(),
         centerTitle: false,
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search),
-            tooltip: '搜索（待实现）',
-          ),
+          if (_searchMode)
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _keyword = '';
+                  _searchController.clear();
+                  _searchMode = false;
+                });
+              },
+              icon: const Icon(Icons.close),
+              tooltip: '退出搜索',
+            )
+          else
+            IconButton(
+              onPressed: () {
+                setState(() => _searchMode = true);
+                Future.microtask(() => _searchFocusNode.requestFocus());
+              },
+              icon: const Icon(Icons.search),
+              tooltip: '搜索课程',
+            ),
         ],
       ),
       body: SafeArea(
@@ -36,7 +87,7 @@ class HomePage extends StatelessWidget {
               animation: store,
               builder: (context, _) {
                 final now = DateTime.now();
-                final courses = [...store.courses]
+                final courses = [..._filteredCourses(store.courses, now)]
                   ..sort((a, b) {
                     final an = a.schedule.nextSession(now);
                     final bn = b.schedule.nextSession(now);
@@ -52,7 +103,12 @@ class HomePage extends StatelessWidget {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     if (index == 0) {
-                      return _Header(theme: theme, count: courses.length);
+                      return _Header(
+                        theme: theme,
+                        count: courses.length,
+                        filter: _filter,
+                        onFilterChanged: (value) => setState(() => _filter = value),
+                      );
                     }
 
                     final course = courses[index - 1];
@@ -80,16 +136,24 @@ class HomePage extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () =>
-                                    _openAttendance(context, course, makeUpMode: false, leaveMode: true),
+                                onPressed: () => _openAttendance(
+                                  context,
+                                  course,
+                                  makeUpMode: false,
+                                  leaveMode: true,
+                                ),
                                 child: const Text('请假'),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: () =>
-                                    _openAttendance(context, course, makeUpMode: true, leaveMode: false),
+                                onPressed: () => _openAttendance(
+                                  context,
+                                  course,
+                                  makeUpMode: true,
+                                  leaveMode: false,
+                                ),
                                 child: const Text('补卡'),
                               ),
                             ),
@@ -114,12 +178,48 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  List<Course> _filteredCourses(List<Course> source, DateTime now) {
+    final filteredByType = switch (_filter) {
+      _CourseFilter.expiringSoon =>
+          source.where(_isExpiringSoon).toList(),
+      _CourseFilter.thisWeek =>
+          source.where((c) => _hasUpcomingThisWeek(c, now)).toList(),
+      _CourseFilter.all => source,
+    };
+
+    return filteredByType.where(_matchesKeyword).toList();
+  }
+
+  bool _isExpiringSoon(Course course) {
+    if (course.totalLessons <= 0) return false;
+    return (course.remainingLessons / course.totalLessons) < 0.2;
+  }
+
+  bool _hasUpcomingThisWeek(Course course, DateTime now) {
+    final next = course.schedule.nextSession(now);
+    if (next == null) return false;
+    final endOfWeek = DateTime(
+      now.year,
+      now.month,
+      now.day + (DateTime.sunday - now.weekday),
+      23,
+      59,
+      59,
+    );
+    return !next.isAfter(endOfWeek);
+  }
+
+  bool _matchesKeyword(Course course) {
+    if (_keyword.isEmpty) return true;
+    return course.title.toLowerCase().contains(_keyword.toLowerCase());
+  }
+
   CourseCardData _toCardData(Course course) {
     final now = DateTime.now();
     final remaining = course.remainingLessons;
     final total = course.totalLessons;
 
-    final expiringByRemaining = remaining <= 2;
+    final expiringByRemaining = total > 0 && (remaining / total) < 0.2;
     final expiringByDate =
         course.endDate != null && course.endDate!.difference(now).inDays <= 7;
 
@@ -254,10 +354,17 @@ class _AppBrandTitle extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.theme, required this.count});
+  const _Header({
+    required this.theme,
+    required this.count,
+    required this.filter,
+    required this.onFilterChanged,
+  });
 
   final ThemeData theme;
   final int count;
+  final _CourseFilter filter;
+  final ValueChanged<_CourseFilter> onFilterChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -273,13 +380,25 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Wrap(
+          Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _FilterChip(label: '全部', selected: true),
-              _FilterChip(label: '即将到期'),
-              _FilterChip(label: '本周有课'),
+              _FilterChip(
+                label: '全部',
+                selected: filter == _CourseFilter.all,
+                onTap: () => onFilterChanged(_CourseFilter.all),
+              ),
+              _FilterChip(
+                label: '即将到期',
+                selected: filter == _CourseFilter.expiringSoon,
+                onTap: () => onFilterChanged(_CourseFilter.expiringSoon),
+              ),
+              _FilterChip(
+                label: '本周有课',
+                selected: filter == _CourseFilter.thisWeek,
+                onTap: () => onFilterChanged(_CourseFilter.thisWeek),
+              ),
             ],
           ),
         ],
@@ -289,10 +408,15 @@ class _Header extends StatelessWidget {
 }
 
 class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, this.selected = false});
+  const _FilterChip({
+    required this.label,
+    this.selected = false,
+    this.onTap,
+  });
 
   final String label;
   final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -303,17 +427,21 @@ class _FilterChip extends StatelessWidget {
     final foreground =
         selected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: foreground,
-          fontWeight: FontWeight.w700,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: foreground,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
