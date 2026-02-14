@@ -1,0 +1,105 @@
+﻿name: build-and-release
+
+on:
+  push:
+    tags:
+      - 'v*+cn'
+      - 'v*+intl'
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }} / ${{ matrix.flavor }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: web
+            os: ubuntu-latest
+            flavor: cn
+            tag_suffix: '+cn'
+            target: lib/main_cn.dart
+          - platform: web
+            os: ubuntu-latest
+            flavor: intl
+            tag_suffix: '+intl'
+            target: lib/main_intl.dart
+          - platform: android
+            os: ubuntu-latest
+            flavor: cn
+            tag_suffix: '+cn'
+            target: lib/main_cn.dart
+          - platform: android
+            os: ubuntu-latest
+            flavor: intl
+            tag_suffix: '+intl'
+            target: lib/main_intl.dart
+          - platform: ios
+            os: macos-latest
+            flavor: cn
+            tag_suffix: '+cn'
+            target: lib/main_cn.dart
+          - platform: ios
+            os: macos-latest
+            flavor: intl
+            tag_suffix: '+intl'
+            target: lib/main_intl.dart
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard tag for flavor
+        run: |
+          TAG_REF="${GITHUB_REF#refs/tags/}"
+          if [[ "${TAG_REF}" != *"${{ matrix.tag_suffix }}" ]]; then
+            echo "Skipping: tag ${TAG_REF} doesn't match flavor ${{ matrix.flavor }}"
+            exit 1
+          fi
+
+      - name: Extract version from tag
+        run: |
+          TAG_REF="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_REF#v}"
+          VERSION="${VERSION%%+*}"
+          echo "BUILD_NAME=${VERSION}" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build web
+        if: matrix.platform == 'web'
+        run: flutter build web --release -t ${{ matrix.target }} --build-name ${{ env.BUILD_NAME }} --build-number ${{ env.BUILD_NUMBER }}
+
+      - name: Build android
+        if: matrix.platform == 'android'
+        run: flutter build apk --release --flavor ${{ matrix.flavor }} -t ${{ matrix.target }} --build-name ${{ env.BUILD_NAME }} --build-number ${{ env.BUILD_NUMBER }}
+
+      - name: Build ios
+        if: matrix.platform == 'ios'
+        run: flutter build ipa --release --flavor ${{ matrix.flavor }} -t ${{ matrix.target }} --build-name ${{ env.BUILD_NAME }} --build-number ${{ env.BUILD_NUMBER }} --no-codesign
+
+      - name: Upload web artifact
+        if: matrix.platform == 'web'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-${{ matrix.flavor }}-${{ github.ref_name }}
+          path: build/web
+
+      - name: Upload android artifact
+        if: matrix.platform == 'android'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ matrix.flavor }}-${{ github.ref_name }}
+          path: build/app/outputs/flutter-apk/*.apk
+
+      - name: Upload ios artifact
+        if: matrix.platform == 'ios'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ matrix.flavor }}-${{ github.ref_name }}
+          path: build/ios/ipa/*.ipa

@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   supabase_flutter: ^2.9.1
+  flutter_localizations:
+    sdk: flutter
 
 # Keep dependencies minimal for now; add as we implement features.
 

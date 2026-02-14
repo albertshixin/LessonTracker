@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,6 +10,9 @@ class UserProfile {
     this.phone,
     this.photoUrl,
     this.provider,
+    this.gender,
+    this.birthDate,
+    this.country,
   });
 
   final String id;
@@ -18,6 +21,9 @@ class UserProfile {
   final String? phone;
   final String? photoUrl;
   final String? provider;
+  final String? gender;
+  final DateTime? birthDate;
+  final String? country;
 }
 
 class SupabaseProfileRepository {
@@ -51,6 +57,12 @@ class SupabaseProfileRepository {
     });
   }
 
+  Future<void> updateDisplayName(String name) async {
+    await _client.from('profiles').update({
+      'display_name': name,
+    }).eq('id', userId);
+  }
+
   Future<void> updateEmail(String email) async {
     await _client.from('profiles').update({
       'email': email,
@@ -63,7 +75,34 @@ class SupabaseProfileRepository {
     }).eq('id', userId);
   }
 
+  Future<void> updateGender(String gender) async {
+    await _client.from('profiles').update({
+      'gender': gender,
+    }).eq('id', userId);
+  }
+
+  Future<void> updateBirthDate(DateTime birthDate) async {
+    final date = DateTime(birthDate.year, birthDate.month, birthDate.day);
+    await _client.from('profiles').update({
+      'birth_date': date.toIso8601String(),
+    }).eq('id', userId);
+  }
+
+  Future<void> updateCountry(String country) async {
+    await _client.from('profiles').update({
+      'country': country,
+    }).eq('id', userId);
+  }
+
   UserProfile _fromRow(Map<String, dynamic> row) {
+    DateTime? birthDate;
+    final rawBirthDate = row['birth_date'];
+    if (rawBirthDate is String) {
+      birthDate = DateTime.tryParse(rawBirthDate);
+    } else if (rawBirthDate is DateTime) {
+      birthDate = rawBirthDate;
+    }
+
     return UserProfile(
       id: row['id'] as String,
       displayName: row['display_name'] as String?,
@@ -71,6 +110,9 @@ class SupabaseProfileRepository {
       phone: row['phone'] as String?,
       photoUrl: row['photo_url'] as String?,
       provider: row['provider'] as String?,
+      gender: row['gender'] as String?,
+      birthDate: birthDate,
+      country: row['country'] as String?,
     );
   }
 }

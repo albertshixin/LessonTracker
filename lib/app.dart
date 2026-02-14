@@ -1,5 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'app_config.dart';
 import 'core/app_scope.dart';
 import 'data/models/course.dart';
 import 'data/repositories/in_memory_course_repository.dart';
@@ -9,9 +11,12 @@ import 'ui/views/course/course_create_page.dart';
 import 'ui/views/course/course_detail_page.dart';
 import 'ui/views/login/auth_gate.dart';
 import 'ui/views/login/login_page.dart';
+import 'ui/views/login/reset_password_page.dart';
 
 class App extends StatefulWidget {
-  const App({super.key});
+  const App({super.key, required this.config});
+
+  final AppConfig config;
 
   @override
   State<App> createState() => _AppState();
@@ -36,84 +41,98 @@ class _AppState extends State<App> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScope(
-      store: _store,
-      child: MaterialApp(
-        title: '课管家',
-        theme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: const Color(0xFF1E88E5), // 蓝色科技感基准
-          fontFamily: 'NotoSansSC',
-          scaffoldBackgroundColor: const Color(0xFFF7F9FC),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFFF7F9FC),
-            foregroundColor: Color(0xFF0D47A1),
-            elevation: 0,
-          ),
-          cardTheme: CardThemeData(
-            color: Colors.white,
-            surfaceTintColor: const Color(0xFFEEF4FF),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+    return AppConfigScope(
+      config: widget.config,
+      child: AppScope(
+        store: _store,
+        child: MaterialApp(
+          title: widget.config.appName,
+          locale: widget.config.defaultLocale,
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('en'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          theme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: const Color(0xFF1E88E5), // ???????
+            fontFamily: 'NotoSansSC',
+            scaffoldBackgroundColor: const Color(0xFFF7F9FC),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFFF7F9FC),
+              foregroundColor: Color(0xFF0D47A1),
+              elevation: 0,
             ),
-            elevation: 1,
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF1E88E5),
-              foregroundColor: Colors.white,
+            cardTheme: CardThemeData(
+              color: Colors.white,
+              surfaceTintColor: const Color(0xFFEEF4FF),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 1,
+            ),
+            filledButtonTheme: FilledButtonThemeData(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1E88E5),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            outlinedButtonTheme: OutlinedButtonThemeData(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1E88E5),
+                side: const BorderSide(color: Color(0xFF64B5F6)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            inputDecorationTheme: const InputDecorationTheme(
+              border: OutlineInputBorder(),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF1E88E5), width: 2),
+              ),
+            ),
+            snackBarTheme: const SnackBarThemeData(
+              backgroundColor: Color(0xFF0D47A1),
+              contentTextStyle: TextStyle(color: Colors.white),
+            ),
+            chipTheme: ChipThemeData(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              backgroundColor: const Color(0xFFE3F2FD),
+              selectedColor: const Color(0xFF1E88E5),
+              labelStyle: const TextStyle(
+                color: Color(0xFF0D47A1),
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          outlinedButtonTheme: OutlinedButtonThemeData(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF1E88E5),
-              side: const BorderSide(color: Color(0xFF64B5F6)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          inputDecorationTheme: const InputDecorationTheme(
-            border: OutlineInputBorder(),
-            focusedBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF1E88E5), width: 2),
-            ),
-          ),
-          snackBarTheme: const SnackBarThemeData(
-            backgroundColor: Color(0xFF0D47A1),
-            contentTextStyle: TextStyle(color: Colors.white),
-          ),
-          chipTheme: ChipThemeData(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-            ),
-            backgroundColor: const Color(0xFFE3F2FD),
-            selectedColor: const Color(0xFF1E88E5),
-            labelStyle: const TextStyle(
-              color: Color(0xFF0D47A1),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          home: const AuthGate(),
+          routes: {
+            LoginPage.routeName: (_) => const LoginPage(),
+          ResetPasswordPage.routeName: (_) => const ResetPasswordPage(),
+            AccountPage.routeName: (_) => const AccountPage(),
+            CourseCreatePage.routeName: (_) => const CourseCreatePage(),
+          },
+          onGenerateRoute: (settings) {
+            if (settings.name == CourseDetailPage.routeName &&
+                settings.arguments is Course) {
+              return MaterialPageRoute(
+                builder: (_) =>
+                    CourseDetailPage(course: settings.arguments as Course),
+              );
+            }
+            return null;
+          },
         ),
-        home: const AuthGate(),
-        routes: {
-          LoginPage.routeName: (_) => const LoginPage(),
-          AccountPage.routeName: (_) => const AccountPage(),
-          CourseCreatePage.routeName: (_) => const CourseCreatePage(),
-        },
-        onGenerateRoute: (settings) {
-          if (settings.name == CourseDetailPage.routeName &&
-              settings.arguments is Course) {
-            return MaterialPageRoute(
-              builder: (_) =>
-                  CourseDetailPage(course: settings.arguments as Course),
-            );
-          }
-          return null;
-        },
       ),
     );
   }
